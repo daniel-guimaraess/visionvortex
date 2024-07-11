@@ -1,40 +1,79 @@
 import os
 import jwt
 import cv2
+from datetime import datetime
 import requests
+import sqlite3
 from ultralytics import YOLO
 from dotenv import load_dotenv
 from middleware import authenticate_token
-from multiprocessing import Process, Value
+from multiprocessing import Process
 from flask import Flask, Response, render_template, jsonify
 
 load_dotenv()
 app = Flask(__name__)
 
-monitor_process = None
-running = Value('b', False)
+def get_running_status():
+    conn = sqlite3.connect('/home/agente/Documentos/database')
+    cursor = conn.cursor()
+    cursor.execute('SELECT status FROM monitoring WHERE id=1')
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] 
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+
+def set_running_status(status):
+    conn = sqlite3.connect('/home/agente/Documentos/database')
+    cursor = conn.cursor()
+    cursor.execute('UPDATE monitoring SET status=? WHERE id=1', (int(status),))
+    conn.commit()
+    conn.close()
 
 
-def monitoring(running):
+def checkThresholdTime(last_time, current_time):    
+    difference = current_time - last_time
+    if(difference >= 90):
+        return True
+    else:
+        return False
+
+
+def monitoring():
     try:
-        print('iniciou o monitoramento')
-        cap = cv2.VideoCapture('rtsp://admin:admin@192.168.15.50:554/live/av0')
+        cap = cv2.VideoCapture(0)
         model = YOLO('/var/www/html/visionvortex.com.br/models/best.pt')
         skip_frames = 15
         current_frame = 0
-        tinha_eating = []
-        tinha_drinking = []
-        tinha_in_box = []
-        lua_eating = []
-        lua_drinking = []
-        lua_in_box = []
         threshold = 0.9
 
-        while running.value:
+        alerts = {
+            'tinha_eating': {
+                'ids': [],
+                'time': 0
+            },
+            'tinha_drinking': {
+                'ids': [],
+                'time': 0
+            },
+            'tinha_in_box': {
+                'ids': [],
+                'time': 0
+            },
+            'lua_eating': {
+                'ids': [],
+                'time': 0
+            },
+            'lua_drinking': {
+                'ids': [],
+                'time': 0
+            },
+            'lua_in_box': {
+                'ids': [],
+                'time': 0
+            }
+        }
+
+        while True:
             success, frame = cap.read()
             if not success:
                 break
@@ -51,61 +90,69 @@ def monitoring(running):
                             if len(detection) >= 7 and detection[6] == 0:
                                 if detection[5] > threshold:
                                     id = detection[4]
-                                    if id not in tinha_eating:
-                                        file_path = f'snapshots/alert_tinha_eating_{current_frame}.jpg'
-                                        cv2.imwrite(file_path, frame_resized)
-                                        tinha_eating.append(id)
+                                    if id not in alerts['tinha_eating']['ids']:
+                                        if(alerts['tinha_eating']['time'] == 0 or checkThresholdTime(alerts['tinha_eating']['time'], int(datetime.now().timestamp()))):
+                                            file_path = f'snapshots/alert_tinha_eating_{current_frame}.jpg'
+                                            cv2.imwrite(file_path, frame_resized)
+                                            alerts['tinha_eating']['ids'].append(id)
+                                            alerts['tinha_eating']['time'] = (int(datetime.now().timestamp()))
                             
                             elif len(detection) >= 7 and detection[6] == 1:
                                 if detection[5] > threshold:
                                     id = detection[4]
-                                    if id not in tinha_drinking:
-                                        file_path = f'snapshots/alert_tinha_drinking_{current_frame}.jpg'
-                                        cv2.imwrite(file_path, frame_resized)
-                                        tinha_drinking.append(id)
+                                    if id not in alerts['tinha_drinking']['ids']:
+                                        if(checkThresholdTime(alerts['tinha_drinking']['time'] == 0 or alerts['tinha_drinking']['time'], int(datetime.now().timestamp()))):
+                                            file_path = f'snapshots/alert_tinha_drinking_{current_frame}.jpg'
+                                            cv2.imwrite(file_path, frame_resized)
+                                            alerts['tinha_drinking']['ids'].append(id)
+                                            alerts['tinha_drinking']['time'] = (int(datetime.now().timestamp()))
 
                             elif len(detection) >= 7 and detection[6] == 2:
                                 if detection[5] > threshold:
                                     id = detection[4]
-                                    if id not in tinha_in_box:
-                                        file_path = f'snapshots/alert_tinha_in_box_{current_frame}.jpg'
-                                        cv2.imwrite(file_path, frame_resized)
-                                        tinha_in_box.append(id)
+                                    if id not in alerts['tinha_in_box']['ids']:
+                                        if(checkThresholdTime(alerts['tinha_in_box']['time'] == 0 or alerts['tinha_in_box']['time'], int(datetime.now().timestamp()))):
+                                            file_path = f'snapshots/alert_tinha_in_box_{current_frame}.jpg'
+                                            cv2.imwrite(file_path, frame_resized)
+                                            alerts['tinha_in_box']['ids'].append(id)
+                                            alerts['tinha_in_box']['time'] = (int(datetime.now().timestamp()))
 
                             elif len(detection) >= 7 and detection[6] == 3:
                                 if detection[5] > threshold:
                                     id = detection[4]
-                                    if id not in lua_eating:
-                                        file_path = f'snapshots/alert_lua_eating_{current_frame}.jpg'
-                                        cv2.imwrite(file_path, frame_resized)
-                                        lua_eating.append(id)
+                                    if id not in alerts['lua_eating']['ids']:
+                                        if(checkThresholdTime(alerts['lua_eating']['time'] == 0 or alerts['lua_eating']['time'], int(datetime.now().timestamp()))):
+                                            file_path = f'snapshots/alert_lua_eating_{current_frame}.jpg'
+                                            cv2.imwrite(file_path, frame_resized)
+                                            alerts['lua_eating']['ids'].append(id)
+                                            alerts['lua_eating']['time'] = int(datetime.now().timestamp())
                             
                             elif len(detection) >= 7 and detection[6] == 4:
                                 if detection[5] > threshold:
                                     id = detection[4]
-                                    if id not in lua_drinking:
-                                        file_path = f'snapshots/alert_lua_drinking_{current_frame}.jpg'
-                                        cv2.imwrite(file_path, frame_resized)
-                                        lua_drinking.append(id)
+                                    if id not in alerts['lua_drinking']['ids']:
+                                        if(checkThresholdTime(alerts['lua_drinking']['time'] == 0 or alerts['lua_drinking']['time'], int(datetime.now().timestamp()))):
+                                            file_path = f'snapshots/alert_lua_drinking_{current_frame}.jpg'
+                                            cv2.imwrite(file_path, frame_resized)
+                                            alerts['lua_drinking']['ids'].append(id)
+                                            alerts['lua_drinking']['time'] = (int(datetime.now().timestamp()))
 
                             elif len(detection) >= 7 and detection[6] == 5:
                                 if detection[5] > threshold:
                                     id = detection[4]
-                                    if id not in lua_in_box:
-                                        file_path = f'snapshots/alert_lua_in_box_{current_frame}.jpg'
-                                        cv2.imwrite(file_path, frame_resized)
-                                        lua_in_box.append(id)
+                                    if id not in alerts['lua_in_box']['ids']:
+                                        if(checkThresholdTime(alerts['lua_in_box']['time'] == 0 or alerts['lua_in_box']['time'], int(datetime.now().timestamp()))):
+                                            file_path = f'snapshots/alert_lua_in_box_{current_frame}.jpg'
+                                            cv2.imwrite(file_path, frame_resized)
+                                            alerts['lua_in_box']['ids'].append(id)
+                                            alerts['lua_in_box']['time'] = (int(datetime.now().timestamp()))
 
             current_frame += 1
-            cv2.imshow('Teste', frame_resized)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
+    
     except Exception as e:
         print(f'Erro no processo de monitoramento: {e}')
     finally:
-        running.value = False
-
+        set_running_status(0)
 
 def send_alert(detection, confidence, file_path):
     files = {'file': open(file_path, 'rb')}
@@ -133,55 +180,11 @@ def send_alert(detection, confidence, file_path):
     except requests.exceptions.RequestException as e:
         os.remove(file_path)
         print(f'Erro na requisição HTTP: {e}')
-
-
-@app.route('/start', methods=['GET'])
-@authenticate_token
-def start_monitoring():
-    global monitor_process, running
-
-    if not running.value:
-        running.value = True
-        monitor_process = Process(target=monitoring, args=(running,))
-        monitor_process.start()
-
-        return jsonify({'message': 'Monitoramento iniciado'}), 200
-    
-    elif running.value == True:
-
-        return jsonify({'message': 'Monitoramento ativo'}), 200
-    else:       
-       return jsonify({'message': 'Não foi possível iniciar monitoramento'}), 400 
-    
-
-@app.route('/stop', methods=['GET'])
-@authenticate_token
-def stop_monitoring():
-    global monitor_process, running
-
-    if running.value:
-        running.value = False
-        monitor_process.join()
-        monitor_process = None
-
-        return jsonify({'message': 'Monitoramento desabilitado'}), 200
-    else:
-        return jsonify({'message': 'Monitoramento desabilitado'}), 200
-    
-
-@app.route('/status', methods=['GET'])
-@authenticate_token
-def get_status():
-    global running
-
-    if running.value:
-        return jsonify({'message': 'Monitoramento ativo'}), 200
-    else:
-        return jsonify({'message': 'Monitoramento desabilitado'}), 200
-    
+        
 
 def generate_frames():
     cap = cv2.VideoCapture(0)
+    
     while True:
         success, frame = cap.read()
         if not success:
@@ -191,7 +194,49 @@ def generate_frames():
             frame = buffer.tobytes()
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-            
+
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+@app.route('/start', methods=['GET'])
+@authenticate_token
+def start_monitoring():
+    global monitor_process
+    if not get_running_status() == 1:
+        set_running_status(1)
+        monitor_process = Process(target=monitoring)
+        monitor_process.start()
+
+        return jsonify({'message': 'Monitoramento iniciado'}), 200
+    
+    else:
+        return jsonify({'message': 'Monitoramento ativo'}), 200
+    
+
+@app.route('/stop', methods=['GET'])
+@authenticate_token
+def stop_monitoring():
+    global monitor_process
+
+    if get_running_status() == 1:
+        set_running_status(0)
+
+        return jsonify({'message': 'Monitoramento desabilitado'}), 200
+    else:
+        return jsonify({'message': 'Monitoramento desabilitado'}), 200
+    
+
+@app.route('/status', methods=['GET'])
+@authenticate_token
+def get_status():
+    if get_running_status():
+        return jsonify({'message': 'Monitoramento ativo'}), 200
+    else:
+        return jsonify({'message': 'Monitoramento desabilitado'}), 200
+
 
 @app.route('/monitoring')
 def monitoringCamera():
@@ -200,4 +245,4 @@ def monitoringCamera():
 
 
 if __name__ == '__main__':
-    app.run(port=8085, debug=True)
+    app.run(port=80, debug=True)
