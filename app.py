@@ -46,10 +46,10 @@ def checkThresholdTime(last_time, current_time):
 def monitoring():
     try:
         cap = cv2.VideoCapture(os.getenv('RTSP'))
-        model = YOLO('/var/www/html/visionvortex.com.br/models/best.pt')
+        model = YOLO('/var/www/html/visionvortex.com.br/models/last.pt')
         skip_frames = 15
         current_frame = 0
-        threshold = 0.9
+        threshold = 0.93
 
         alerts = {
             'tinha_eating': {
@@ -109,7 +109,7 @@ def monitoring():
                                             cv2.imwrite(file_path, frame_resized)
                                             alerts['tinha_eating']['ids'].append(id)
                                             alerts['tinha_eating']['time'] = (int(datetime.now().timestamp()))
-                                            send_alert('Tinha comeu ração', detection[5], file_path)
+                                            send_alert('Tinha comeu ração', 1, detection[5], file_path)
                             
                             elif len(detection) >= 7 and detection[6] == 1:
                                 if detection[5] > threshold:
@@ -120,7 +120,7 @@ def monitoring():
                                             cv2.imwrite(file_path, frame_resized)
                                             alerts['tinha_drinking']['ids'].append(id)
                                             alerts['tinha_drinking']['time'] = (int(datetime.now().timestamp()))
-                                            send_alert('Tinha bebeu água', detection[5], file_path)
+                                            send_alert('Tinha bebeu água', 1, detection[5], file_path)
 
                             elif len(detection) >= 7 and detection[6] == 2:
                                 if detection[5] > threshold:
@@ -131,7 +131,7 @@ def monitoring():
                                             cv2.imwrite(file_path, frame_resized)
                                             alerts['tinha_in_box']['ids'].append(id)
                                             alerts['tinha_in_box']['time'] = (int(datetime.now().timestamp()))
-                                            send_alert('Lua foi na caixa de areia', detection[5], file_path)
+                                            send_alert('Tinha foi na caixa de areia', 1, detection[5], file_path)
 
                             elif len(detection) >= 7 and detection[6] == 3:
                                 if detection[5] > threshold:
@@ -142,7 +142,7 @@ def monitoring():
                                             cv2.imwrite(file_path, frame_resized)
                                             alerts['lua_eating']['ids'].append(id)
                                             alerts['lua_eating']['time'] = int(datetime.now().timestamp())
-                                            send_alert('Lua comeu ração', detection[5], file_path)
+                                            send_alert('Lua comeu ração', 2, detection[5], file_path)
                             
                             elif len(detection) >= 7 and detection[6] == 4:
                                 if detection[5] > threshold:
@@ -153,7 +153,7 @@ def monitoring():
                                             cv2.imwrite(file_path, frame_resized)
                                             alerts['lua_drinking']['ids'].append(id)
                                             alerts['lua_drinking']['time'] = (int(datetime.now().timestamp()))
-                                            send_alert('Lua bebeu água', detection[5], file_path)
+                                            send_alert('Lua bebeu água', 2, detection[5], file_path)
 
                             elif len(detection) >= 7 and detection[6] == 5:
                                 if detection[5] > threshold:
@@ -164,7 +164,7 @@ def monitoring():
                                             cv2.imwrite(file_path, frame_resized)
                                             alerts['lua_in_box']['ids'].append(id)
                                             alerts['lua_in_box']['time'] = (int(datetime.now().timestamp()))
-                                            send_alert('Lua foi na caixa de areia', detection[5], file_path)
+                                            send_alert('Lua foi na caixa de areia', 2, detection[5], file_path)
 
             current_frame += 1
     
@@ -173,11 +173,12 @@ def monitoring():
     finally:
         set_running_status(0)
 
-def send_alert(detection, confidence, file_path):
+def send_alert(detection, pet_id, confidence, file_path):
     files = {'file': open(file_path, 'rb')}
 
     payload = {
-        'type': 'notification', 
+        'type': 'detection', 
+        'pet_id': pet_id,
         'detection': detection,
         'confidence': confidence
     }
@@ -238,10 +239,6 @@ def start_monitoring():
     
     else:
         return jsonify({'message': 'Monitoramento ativo'}), 200
-    
-@app.route('/rodrigo', methods=['GET'])
-def rodrigo():
-    return 'rodrigo'
     
 
 @app.route('/stop', methods=['GET'])
